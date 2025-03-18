@@ -61,6 +61,7 @@
         "typeinfo": "cpp",
         "variant": "cpp",
         "fstream": "cpp",
-        "bitset": "cpp"
+        "bitset": "cpp",
+        "cfloat": "cpp"
     }
 }

@@ -1,1048 +1,778 @@
 #include "big_int.hpp"
-#include <iostream>
 #include <bitset>
-#include <sstream>
 
 namespace __NAMESPACE_NAME__
 {
     big_int::big_int()
     {
-        this->sign_ = sign::positive;
-        this->max_bit_lenth_ = 65536;
-        this->data_.reserve(2);
-        this->data_.push_back(0);
     }
 
-    big_int::big_int(const std::string_view &str)
+    big_int::big_int(const big_int &num)
     {
-        big_int temp1;
-        constexpr u32 num_block_lenth = 18;
-        const u32 block = str.size() / num_block_lenth;
-        const u32 skip = str.size() % num_block_lenth;
-
-        std::string temp2{str.substr(0, skip)};
-        temp1 += big_int(atoll(temp2.c_str()));
-        for (size_t i = 0; i < block; i++)
-        {
-            temp1 *= 1'000'000'000'000'000'000;
-            temp2 = str.substr(skip + i * num_block_lenth, num_block_lenth);
-            temp1 += big_int(atoll(temp2.c_str()));
-        }
-        *this = temp1;
-        return;
+        this->state = num.state;
+        this->data = num.data;
+        this->max_length = num.max_length;
     }
-    big_int::big_int(const i64 num)
+
+    big_int::big_int(big_int &&num) noexcept
     {
-        u64 abs_num = num < 0 ? -num : num;
-        u32 high = abs_num >> 32;
-        u32 low = abs_num & 0xffffffff;
-        // std::cout << "num: " << num << " abs_num: " << abs_num << " low: " << low << " high: " << high << "\n";
-        // std::cout << "bit: " << std::bitset<32>(high).to_string() << std::bitset<32>(low).to_string() << '\n';
-        if (num == 0)
+        // 移动数据
+        this->state = num.state;
+        this->data = std::move(num.data);
+        this->max_length = num.max_length;
+        // 清空数据
+        num.state = sign_state::undefined;
+        num.data = {0};
+        num.max_length = num.max_length;
+    }
+
+    big_int::big_int(const std::string &num)
+    {
+        // 处理非数字或未定义状态
+        if (!is_valid_number(num))
         {
-            this->sign_ = sign::positive;
+            this->data = {0};
+            this->state = sign_state::undefined;
+            return;
         }
-        else if (num < 0)
+        // 处理正常字符串
+        if (num[0] == '-')
         {
-            this->sign_ = sign::negative;
+            this->state = sign_state::negative;
+            this->data = decimal_to_binary(num.substr(1));
+        }
+        else if (num[0] == '+')
+        {
+            this->state = sign_state::positive;
+            this->data = decimal_to_binary(num.substr(1));
         }
         else
         {
-            this->sign_ = sign::positive;
+            this->state = sign_state::positive;
+            this->data = decimal_to_binary(num);
         }
+        format();
+    }
 
-        this->data_.reserve(2);
-        this->data_.push_back(low);
-        if (high != 0)
+    big_int::big_int(i64 num)
+    {
+        data = {u32(std::abs(num) & u32_max), u32(std::abs(num) >> 32)};
+        if (num < 0)
         {
-            this->data_.push_back(high);
+            state = sign_state::negative;
         }
+        format();
+    }
 
-        this->max_bit_lenth_ = 65536;
-    }
-    big_int::big_int(const big_int &other)
-    {
-        this->data_ = other.data_;
-        this->sign_ = other.sign_;
-        this->max_bit_lenth_ = other.max_bit_lenth_;
-        return;
-    }
-    big_int::big_int(big_int &&other)
-    {
-        this->data_.swap(other.data_);
-        other.data_.clear();
-        this->sign_ = other.sign_;
-        other.sign_ = sign::uninitialized;
-        this->max_bit_lenth_ = other.max_bit_lenth_;
-        return;
-    }
-    big_int::~big_int()
-    {
-    }
-    void big_int::swap(big_int &other)
-    {
-        this->data_.swap(other.data_);
-        auto tmp = this->sign_;
-        this->sign_ = other.sign_;
-        other.sign_ = tmp;
-        auto tmp2 = this->max_bit_lenth_;
-        this->max_bit_lenth_ = other.max_bit_lenth_;
-        other.max_bit_lenth_ = tmp2;
-        return;
-    }
-    big_int &big_int::operator=(const i64 num)
-    {
-        u64 abs_num = num < 0 ? -num : num;
-        u32 high = abs_num >> 32;
-        u32 low = abs_num & 0xffffffff;
-
-        if (num == 0)
-        {
-            this->sign_ = sign::positive;
-        }
-        else if (num < 0)
-        {
-            this->sign_ = sign::negative;
-        }
-        else
-        {
-            this->sign_ = sign::positive;
-        }
-
-        this->data_.reserve(2);
-        this->data_.clear();
-        this->data_.push_back(low);
-        if (high != 0)
-        {
-            this->data_.push_back(high);
-        }
-
-        this->max_bit_lenth_ = 65536;
-        return *this;
-    }
     big_int &big_int::operator=(const big_int &other)
     {
         if (this != &other)
-        {
-            this->data_ = other.data_;
-            this->sign_ = other.sign_;
-            this->max_bit_lenth_ = other.max_bit_lenth_;
+        { // 防止自我赋值
+            this->data = other.data;
+            this->state = other.state;
+            this->max_length = other.max_length;
         }
         return *this;
     }
-    big_int &big_int::operator=(big_int &&other)
+
+    big_int &big_int::operator=(big_int &&other) noexcept
     {
         if (this != &other)
-        {
-            this->data_.swap(other.data_);
-            other.data_.clear();
-            this->sign_ = other.sign_;
-            other.sign_ = sign::uninitialized;
-            this->max_bit_lenth_ = other.max_bit_lenth_;
+        { // 防止自我赋值
+            this->data = std::move(other.data);
+            this->state = other.state;
+            this->max_length = other.max_length;
         }
         return *this;
     }
-    bool big_int::operator==(const big_int &other) const
-    {
-        auto &a = *this;
-        auto &b = other;
 
-        i8 a_sign = 0;
-        if (a.sign_ == sign::positive)
-        {
-            a_sign = 1;
-        }
-        else if (a.sign_ == sign::negative)
-        {
-            a_sign = -1;
-        }
-        else
-        {
-            // return -1;
-            throw ::std::runtime_error("big_int operator== a sign err");
-        }
-        i8 b_sign = 0;
-        if (b.sign_ == sign::positive)
-        {
-            b_sign = 1;
-        }
-        else if (b.sign_ == sign::negative)
-        {
-            b_sign = -1;
-        }
-        else
-        {
-            // return -1;
-            throw ::std::runtime_error("big_int operator== b sign err");
-        }
-
-        i32 size_a = a.data_.size();
-        i32 size_b = b.data_.size();
-
-        if (a_sign == b_sign and
-            size_a == size_b)
-        {
-            return this->data_ == other.data_;
-        }
-        return false;
-    }
-    bool big_int::operator!=(const big_int &other) const
+    std::string big_int::to_string() const
     {
-        return !(*this == other);
-    }
-    bool big_int::operator<(const big_int &other) const
-    {
-        auto temp = less(*this, other);
-        if (temp == -1)
+        switch (this->state)
         {
-            return false;
+        case sign_state::positive:
+            return "+" + binary_to_decimal(this->data);
+            break;
+        case sign_state::negative:
+            return "-" + binary_to_decimal(this->data);
+            break;
+        case sign_state::positive_overflow:
+            return "positive_overflow";
+            break;
+        case sign_state::negative_overflow:
+            return "negative_overflow";
+            break;
+        case sign_state::not_a_number:
+            return "not_a_number";
+            break;
+        case sign_state::undefined:
+            return "undefined";
+        default:
+            return "undefined";
+            break;
         }
-        return temp;
-    }
-    bool big_int::operator>(const big_int &other) const
-    {
-        auto temp = less(other, *this);
-        if (temp == -1)
-        {
-            return false;
-        }
-        return temp;
-    }
-    bool big_int::operator<=(const big_int &other) const
-    {
-        auto temp = less(other, *this);
-        if (temp == -1)
-        {
-            return false;
-        }
-        return !temp;
-    }
-    bool big_int::operator>=(const big_int &other) const
-    {
-        auto temp = less(*this, other);
-        if (temp == -1)
-        {
-            return false;
-        }
-        return !temp;
+        return "undefined";
     }
 
-    big_int big_int::operator+() const
+    std::string big_int::to_bit() const
     {
-        auto temp = *this;
-        return temp;
+        std::ostringstream ss;
+        bool leading_zeros = true;
+        switch (this->state)
+        {
+        case sign_state::positive:
+        case sign_state::negative:
+            for (auto it = this->data.rbegin(); it != this->data.rend(); ++it)
+            {
+                if (leading_zeros)
+                {
+                    std::bitset<32> bits(*it);
+                    std::string bit_string = bits.to_string();
+                    size_t first_one = bit_string.find('1');
+                    if (first_one != std::string::npos)
+                    {
+                        ss << bit_string.substr(first_one);
+                        leading_zeros = false;
+                    }
+                }
+                else
+                {
+                    ss << std::bitset<32>(*it);
+                }
+            }
+            if (leading_zeros)
+            {
+                ss << "0";
+            }
+            break;
+        case sign_state::positive_overflow:
+            ss << "positive_overflow";
+            break;
+        case sign_state::negative_overflow:
+            ss << "negative_overflow";
+            break;
+        case sign_state::not_a_number:
+            ss << "not_a_number";
+            break;
+        case sign_state::undefined:
+            ss << "undefined";
+            break;
+        default:
+            ss << "undefined";
+            break;
+        }
+        return ss.str();
+    }
+
+    std::string big_int::to_hex() const
+    {
+        std::ostringstream ss;
+        switch (this->state)
+        {
+        case sign_state::positive:
+        case sign_state::negative:
+            for (auto it = this->data.rbegin(); it != this->data.rend(); ++it)
+            {
+                ss << std::hex << (*it) << " ";
+            }
+            return ss.str();
+            break;
+        case sign_state::positive_overflow:
+            ss << "positive_overflow";
+            break;
+        case sign_state::negative_overflow:
+            ss << "negative_overflow";
+            break;
+        case sign_state::not_a_number:
+            ss << "not_a_number";
+            break;
+        case sign_state::undefined:
+            ss << "undefined";
+            break;
+        default:
+            ss << "undefined";
+            break;
+        }
+        return ss.str();
+    }
+
+    std::string big_int::to_u32() const
+    {
+        std::ostringstream ss;
+        switch (this->state)
+        {
+        case sign_state::positive:
+        case sign_state::negative:
+            for (auto it = this->data.rbegin(); it != this->data.rend(); ++it)
+            {
+                ss << (*it) << " ";
+            }
+            break;
+        case sign_state::positive_overflow:
+            ss << "positive_overflow";
+            break;
+        case sign_state::negative_overflow:
+            ss << "negative_overflow";
+            break;
+        case sign_state::not_a_number:
+            ss << "not_a_number";
+            break;
+        case sign_state::undefined:
+            ss << "undefined";
+            break;
+        default:
+            ss << "undefined";
+            break;
+        }
+
+        return ss.str();
     }
 
     big_int big_int::operator-() const
     {
-        auto temp = *this;
-        if (temp.sign_ == sign::positive)
+        big_int result = *this;
+        // 处理非数字或未定义状态
+        if (error(result))
         {
-            temp.sign_ = sign::negative;
+            return result;
         }
-        else if (temp.sign_ == sign::negative)
-        {
-            temp.sign_ = sign::positive;
-        }
-        else
-        {
-            // return -1;
-            throw ::std::runtime_error("big_int operator- sign err");
-        }
-        return temp;
+        // 返回相反数
+        result.state = (this->state == sign_state::positive) ? sign_state::negative : sign_state::positive;
+        return result;
+    }
+
+    big_int big_int::operator+() const
+    {
+        return *this;
     }
 
     big_int &big_int::operator++()
     {
-        *this += 1;
+        *this += big_int_1;
         return *this;
     }
 
     big_int &big_int::operator--()
     {
-        *this -= 1;
+        *this -= big_int_1;
         return *this;
     }
 
     big_int big_int::operator++(int)
     {
         auto temp = *this;
-        ++*this;
+        *this = *this + big_int_1;
         return temp;
     }
 
     big_int big_int::operator--(int)
     {
         auto temp = *this;
-        --*this;
+        *this = *this - big_int_1;
         return temp;
     }
 
-    big_int &big_int::operator<<=(const u32 num)
+    // 封装 + 运算符
+    big_int big_int::operator+(const big_int &other) const
     {
-        if (num == 0)
+        big_int result;
+        // 处理非数字或未定义状态
+        if (error(result, other))
         {
-            return *this;
+            return result;
         }
-
-        u32 old_block = this->data_.size();
-        u32 block = num / 32; // 整块偏移量
-        u32 bit = num % 32;   // 剩余位偏移量
-
-        if (bit == 0)
+        if (this->state == other.state)
         {
-            // 如果没有剩余位偏移，直接扩展数据块
-            this->data_.resize(old_block + block, 0);
-            for (u32 i = old_block; i > 0; --i)
-            {
-                this->data_[i + block - 1] = this->data_[i - 1];
-            }
-            std::fill(this->data_.begin(), this->data_.begin() + block, 0);
+            // 同号，直接做绝对值加法
+            result = abs_add(*this, other);
+            result.state = this->state; // 保持符号
         }
         else
         {
-            // 处理非对齐位移
-            this->data_.resize(old_block + block + 1, 0); // 预留空间
-            for (u32 i = old_block; i > 0; --i)
+            // 异号，做绝对值减法，结果符号取决于绝对值较大者
+            if (this->abs_greater(other))
             {
-                this->data_[i + block] = (this->data_[i - 1] << bit) |
-                                         ((i > 1) ? (this->data_[i - 2] >> (32 - bit)) : 0);
-            }
-            std::fill(this->data_.begin(), this->data_.begin() + block, 0);
-        }
-
-        // 格式化数据（去除多余的零）
-        // this->format();
-
-        return *this;
-    }
-    big_int &big_int::operator>>=(const u32 num)
-    {
-        if (num == 0)
-        {
-            return *this;
-        }
-
-        u32 old_block = this->data_.size();
-        u32 block = num / 32; // 整块偏移量
-        u32 bit = num % 32;   // 剩余位偏移量
-
-        if (block >= old_block)
-        {
-            // 如果偏移量超过数据长度，清空数据并重置为 0
-            this->data_.clear();
-            this->data_.push_back(0);
-            this->sign_ = sign::positive;
-            return *this;
-        }
-
-        if (bit == 0)
-        {
-            // 如果没有剩余位偏移，直接移动数据块
-            for (u32 i = 0; i < old_block - block; ++i)
-            {
-                this->data_[i] = this->data_[i + block];
-            }
-            this->data_.resize(old_block - block);
-        }
-        else
-        {
-            // 处理非对齐位移
-            for (u32 i = 0; i < old_block - block - 1; ++i)
-            {
-                this->data_[i] = (this->data_[i + block] >> bit) |
-                                 (this->data_[i + block + 1] << (32 - bit));
-            }
-            // 处理最后一个块
-            this->data_[old_block - block - 1] = this->data_[old_block - 1] >> bit;
-
-            // // 如果是负数，扩展符号位
-            // if (this->sign_ == sign::negative)
-            // {
-            //     this->data_[old_block - block - 1] |= (0xFFFFFFFF << (32 - bit));
-            // }
-
-            this->data_.resize(old_block - block);
-        }
-
-        // 格式化数据（去除多余的零）
-        this->format();
-
-        return *this;
-    }
-
-    big_int &big_int::operator+=(const big_int &other)
-    {
-        auto a_sign = this->get_sign();
-        auto b_sign = other.get_sign();
-
-        if (a_sign == b_sign)
-        {
-            abs_add(*this, other);
-        }
-        else
-        {
-            bool sign__ = *this > other;
-            auto &big = abs_big(*this, other);
-            auto &small = abs_small(*this, other);
-            if (&big == this)
-            {
-                abs_sub(*this, other);
-                if (sign__)
-                {
-                    this->sign_ = sign::positive;
-                }
-                else
-                {
-                    this->sign_ = sign::negative;
-                }
+                result = abs_sub(*this, other);
+                result.state = this->state; // 保持符号
             }
             else
             {
-                big_int temp = big;
-                abs_sub(temp, small);
-                if (sign__)
-                {
-                    temp.sign_ = sign::positive;
-                }
-                else
-                {
-                    temp.sign_ = sign::negative;
-                }
-                *this = std::move(temp);
+                result = abs_sub(other, *this);
+                result.state = other.state; // 保持符号
             }
         }
-        return *this;
+
+        return result;
     }
-
-    big_int &big_int::operator-=(const big_int &other)
+    // 封装 - 运算符
+    big_int big_int::operator-(const big_int &other) const
     {
-        auto a_sign = this->get_sign();
-        auto b_sign = other.get_sign();
-
-        if (a_sign != b_sign)
+        big_int result;
+        // 处理非数字或未定义状态
+        if (error(result, other))
         {
-            abs_add(*this, other);
+            return result;
+        }
+
+        if (this->state != other.state)
+        {
+            // 异号，转为绝对值加法
+            result = abs_add(*this, other);
+            result.state = this->state; // 保持符号
         }
         else
         {
-            bool sign__ = *this > other;
-            auto &big = abs_big(*this, other);
-            auto &small = abs_small(*this, other);
-            if (&big == this)
+            // 同号，做绝对值减法，结果符号取决于绝对值较大者
+            if (this->abs_greater(other))
             {
-                abs_sub(*this, other);
-                if (sign__)
-                {
-                    this->sign_ = sign::positive;
-                }
-                else
-                {
-                    this->sign_ = sign::negative;
-                }
+                result = abs_sub(*this, other);
+                result.state = this->state; // 保持符号
             }
             else
             {
-                big_int temp = big;
-                abs_sub(temp, small);
-                if (sign__)
-                {
-                    temp.sign_ = sign::positive;
-                }
-                else
-                {
-                    temp.sign_ = sign::negative;
-                }
-                *this = std::move(temp);
+                result = abs_sub(other, *this);
+                result.state = (this->state == sign_state::positive) ? sign_state::negative : sign_state::positive;
             }
         }
-        return *this;
+
+        return result;
     }
-
-    big_int &big_int::operator*=(const big_int &other)
+    // 封装 * 运算符
+    big_int big_int::operator*(const big_int &other) const
     {
-        auto a_sign = this->get_sign();
-        auto b_sign = other.get_sign();
-
-        if (a_sign != b_sign)
+        big_int result;
+        // 处理非数字或未定义状态
+        if (error(result, other))
         {
-            this->sign_ = sign::negative;
-            abs_mul(*this, other);
-        }
-        else
-        {
-            this->sign_ = sign::positive;
-            abs_mul(*this, other);
-        }
-        return *this;
-    }
-
-    big_int &big_int::operator/=(const big_int &other)
-    {
-        auto a_sign = this->get_sign();
-        auto b_sign = other.get_sign();
-        big_int tmp = 0;
-
-        if (a_sign != b_sign)
-        {
-            this->sign_ = sign::negative;
-            abs_div(*this, other, tmp);
-        }
-        else
-        {
-            this->sign_ = sign::positive;
-            abs_div(*this, other, tmp);
-        }
-        this->swap(tmp);
-        return *this;
-    }
-
-    big_int &big_int::operator%=(const big_int &other)
-    {
-        auto a_sign = this->get_sign();
-        auto b_sign = other.get_sign();
-        big_int tmp = 0;
-
-        if (a_sign != b_sign)
-        {
-            this->sign_ = sign::negative;
-            abs_div(*this, other, tmp);
-        }
-        else
-        {
-            this->sign_ = sign::positive;
-            abs_div(*this, other, tmp);
-        }
-        return *this;
-    }
-
-    ::std::string big_int::to_dec() const
-    {
-        ::std::string out;
-        if (this->sign_ == sign::uninitialized)
-        {
-            out += "no_init";
-        }
-        else if (this->sign_ == sign::not_a_number)
-        {
-            out += "NaN";
-        }
-        else if (this->sign_ == sign::positive)
-        {
-            // out += "+";
-        }
-        else if (this->sign_ == sign::negative)
-        {
-            out += "-";
-        }
-        else
-        {
-            throw ::std::runtime_error("big_int to_dec sign err");
+            return result;
         }
 
-        if (this->data_.size() == 1)
-        {
-            out += ::std::to_string(this->data_[0]);
-        }
-        if (this->data_.size() == 2)
-        {
-            out += ::std::to_string(static_cast<u64>(this->data_[0]) + (static_cast<u64>(this->data_[1]) << 32));
-        }
-        if (this->data_.size() >= 3)
-        {
-            const big_int base = 1'000'000'000'000'000'000;
-            // const big_int base = 10;
-            big_int temp = *this;
-            temp.sign_ = sign::positive;
-            ::std::vector<::std::string> parts;
-            big_int remainder;
+        // 符号处理
+        result.state = (this->state == other.state) ? sign_state::positive : sign_state::negative;
 
-            // 不断分解大数
-            while (!temp.is_zero())
+        // 初始化结果数据
+        u64 out_length = this->data.size() + other.data.size();
+        result.data.resize(out_length, 0);
+
+        // 处理溢出
+        if (out_length > this->max_length)
+        {
+            if (result.state == sign_state::positive)
             {
-                abs_div(temp, base, remainder);
-                temp.data_.resize(2, 0);                                                                   // 计算商和余数
-                parts.emplace_back(::std::to_string((u64)(temp.data_[0]) + ((u64)(temp.data_[1]) << 32))); // 存储余数
-                temp.swap(remainder);
+                result.state = sign_state::positive_overflow;
             }
-
-            out += parts.back();
-            // 拼接结果
-            for (i32 i = parts.size() - 2; i >= 0; --i)
+            else
             {
-                for (i32 j = 18 - parts[i].size(); j > 0; --j)
-                {
-                    out += '0';
-                }
-                out += parts[i];
+                result.state = sign_state::negative_overflow;
+            }
+            return result;
+        }
+
+        // 大整数乘法逻辑
+        for (size_t i = 0; i < this->data.size(); ++i)
+        {
+            u64 carry = 0; // 进位
+            for (size_t j = 0; j < other.data.size(); ++j)
+            {
+                // 乘积 + 当前位 + 进位
+                u64 product = static_cast<u64>(this->data[i]) * static_cast<u64>(other.data[j]) +
+                              static_cast<u64>(result.data[i + j]) + carry;
+
+                result.data[i + j] = static_cast<u32>(product & u32_max); // 低 32 位
+                carry = product >> 32;                                    // 高 32 位为进位
+            }
+
+            // 处理最后的进位
+            if (carry > 0)
+            {
+                result.data[i + other.data.size()] += static_cast<u32>(carry);
             }
         }
 
-        return out;
+        // 格式化结果（去除多余的高位 0）
+        result.format();
+        return result;
     }
-    ::std::string big_int::to_hex() const
+    // 封装 / 运算符
+    big_int big_int::operator/(const big_int &other) const
     {
-        ::std::stringstream out;
-        if (this->sign_ == sign::uninitialized)
-        {
-            out << "no_init";
-        }
-        else if (this->sign_ == sign::not_a_number)
-        {
-            out << "NaN";
-        }
-        else if (this->sign_ == sign::positive)
-        {
-            out << "+";
-        }
-        else if (this->sign_ == sign::negative)
-        {
-            out << "-";
-        }
-        else
-        {
-            throw ::std::runtime_error("big_int to_hex sign err");
-        }
-
-        out << ::std::hex;
-        for (i32 i = this->data_.size() - 1; i >= 0; i--)
-        {
-            out << this->data_[i];
-        }
-        out << ::std::dec;
-
-        return out.str();
+        big_int remainder{0};
+        return division(*this, other, remainder);
     }
-    ::std::string big_int::to_oct() const
+    // 封装 % 运算符
+    big_int big_int::operator%(const big_int &other) const
     {
-        ::std::stringstream out;
-        if (this->sign_ == sign::uninitialized)
-        {
-            out << "no_init";
-        }
-        else if (this->sign_ == sign::not_a_number)
-        {
-            out << "NaN";
-        }
-        else if (this->sign_ == sign::positive)
-        {
-            out << "+";
-        }
-        else if (this->sign_ == sign::negative)
-        {
-            out << "-";
-        }
-        else
-        {
-            throw ::std::runtime_error("big_int to_oct sign err");
-        }
-
-        out << ::std::oct;
-        for (i32 i = this->data_.size() - 1; i >= 0; i--)
-        {
-            out << this->data_[i];
-        }
-        out << ::std::dec;
-
-        return out.str();
+        big_int remainder{0};
+        division(*this, other, remainder);
+        return remainder;
     }
-    ::std::string big_int::to_bin() const
+
+    // 运算符重载
+    big_int big_int::operator+=(const big_int &other)
     {
-        ::std::string out;
-        if (this->sign_ == sign::uninitialized)
-        {
-            out += "no_init";
-        }
-        else if (this->sign_ == sign::not_a_number)
-        {
-            out += "NaN";
-        }
-        else if (this->sign_ == sign::positive)
-        {
-            out += "+";
-        }
-        else if (this->sign_ == sign::negative)
-        {
-            out += "-";
-        }
-        else
-        {
-            throw ::std::runtime_error("big_int to_bin sign err");
-        }
-
-        for (i32 i = this->data_.size() - 1; i >= 0; i--)
-        {
-            out += ::std::bitset<32>(this->data_[i]).to_string();
-        }
-
-        return out;
+        *this = (*this + other);
+        return *this;
     }
-    inline bool big_int::get_sign() const
+    big_int big_int::operator-=(const big_int &other)
     {
-        switch (this->sign_)
+        *this = (*this - other);
+        return *this;
+    }
+    big_int big_int::operator*=(const big_int &other)
+    {
+        *this = (*this * other);
+        return *this;
+    }
+    big_int big_int::operator/=(const big_int &other)
+    {
+        *this = (*this / other);
+        return *this;
+    }
+    big_int big_int::operator%=(const big_int &other)
+    {
+        *this = (*this % other);
+        return *this;
+    }
+    // 比较运算
+    bool big_int::operator==(const big_int &other) const
+    {
+        // 符号和数据必须都相同
+        return this->state == other.state && this->data == other.data;
+    }
+
+    bool big_int::operator!=(const big_int &other) const
+    {
+        return !(*this == other);
+    }
+
+    bool big_int::operator>(const big_int &other) const
+    {
+        // 处理非数字或未定义状态
+        big_int tmp = {};
+        if (error(tmp, other))
         {
-        case sign::positive:
-            return true;
-        case sign::negative:
             return false;
-        default:
-            throw std::runtime_error("big_int get_sign: invalid sign state");
         }
-        return 0;
-    }
-    inline const big_int &big_int::abs_big(const big_int &a, const big_int &b)
-    {
-        i32 a_size = a.data_.size();
-        i32 b_size = b.data_.size();
-        if (a_size > b_size)
+
+        // 根据符号状态进行判断
+        if (this->state == sign_state::positive)
         {
-            return a;
+            if (other.state == sign_state::negative)
+                return true; // 正 > 负
+            if (other.state == sign_state::positive)
+                return abs_greater(other); // 同为正数
         }
-        if (a_size < b_size)
+        else if (this->state == sign_state::negative)
         {
-            return b;
+            if (other.state == sign_state::positive)
+                return false; // 负 < 正
+            if (other.state == sign_state::negative)
+                return abs_less(other); // 同为负数
         }
-        // 相等
-        for (i32 i = a_size - 1; i >= 0; i--)
-        {
-            if (a.data_[i] == b.data_[i])
-            {
-                continue;
-            }
-            if (a.data_[i] > b.data_[i])
-            {
-                return a;
-            }
-            if (a.data_[i] < b.data_[i])
-            {
-                return b;
-            }
-        }
-        return a;
-    }
-    inline const big_int &big_int::abs_small(const big_int &a, const big_int &b)
-    {
-        i32 a_size = a.data_.size();
-        i32 b_size = b.data_.size();
-        if (a_size > b_size)
-        {
-            return b;
-        }
-        if (a_size < b_size)
-        {
-            return a;
-        }
-        // 相等
-        for (i32 i = a_size - 1; i >= 0; i--)
-        {
-            if (a.data_[i] == b.data_[i])
-            {
-                continue;
-            }
-            if (a.data_[i] > b.data_[i])
-            {
-                return b;
-            }
-            if (a.data_[i] < b.data_[i])
-            {
-                return a;
-            }
-        }
-        return b;
-    }
-    inline bool big_int::is_zero() const
-    {
-        if (this->data_.size() == 1 and this->data_[0] == 0)
-        {
-            return true;
-        }
+
+        // 默认返回 false（不应到达此处）
         return false;
     }
-    inline i8 big_int::less(const big_int &a, const big_int &b)
+
+    bool big_int::operator<(const big_int &other) const
     {
-        i8 a_sign = 0;
-        if (a.sign_ == sign::positive)
+        // 处理非数字或未定义状态
+        big_int tmp = {};
+        if (error(tmp, other))
         {
-            a_sign = 1;
-        }
-        else if (a.sign_ == sign::negative)
-        {
-            a_sign = -1;
-        }
-        else
-        {
-            return -1;
-        }
-        i8 b_sign = 0;
-        if (b.sign_ == sign::positive)
-        {
-            b_sign = 1;
-        }
-        else if (b.sign_ == sign::negative)
-        {
-            b_sign = -1;
-        }
-        else
-        {
-            return -1;
+            return false;
         }
 
-        i32 size_a = a.data_.size();
-        i32 size_b = b.data_.size();
-
-        if (a_sign < b_sign)
+        // 根据符号状态进行判断
+        if (this->state == sign_state::positive)
         {
-            return 1;
+            if (other.state == sign_state::negative)
+                return false; // 正 > 负
+            if (other.state == sign_state::positive)
+                return abs_less(other); // 同为正数
         }
-        if (a_sign > b_sign)
+        else if (this->state == sign_state::negative)
         {
-            return 0;
-        }
-        if (a_sign == b_sign)
-        {
-            if (a_sign == 1)
-            {
-                if (size_a < size_b)
-                {
-                    return 1;
-                }
-                if (size_a > size_b)
-                {
-                    return 0;
-                }
-                if (size_a == size_b)
-                {
-                    for (i32 i = size_a - 1; i >= 0; i--)
-                    {
-                        if (a.data_[i] == b.data_[i])
-                        {
-                            continue;
-                        }
-                        else
-                        {
-                            if (a.data_[i] < b.data_[i])
-                            {
-                                return 1;
-                            }
-                            else
-                            {
-                                return 0;
-                            }
-                        }
-                    }
-                    // 相等
-                    return 0;
-                }
-            }
-            if (a_sign == -1)
-            {
-                if (size_a < size_b)
-                {
-                    return 0;
-                }
-                if (size_a > size_b)
-                {
-                    return 1;
-                }
-                if (size_a == size_b)
-                {
-                    for (i32 i = size_a - 1; i >= 0; i--)
-                    {
-                        if (a.data_[i] == b.data_[i])
-                        {
-                            continue;
-                        }
-                        else
-                        {
-                            if (a.data_[i] < b.data_[i])
-                            {
-                                return 0;
-                            }
-                            else
-                            {
-                                return 1;
-                            }
-                        }
-                    }
-                    // 相等
-                    return 0;
-                }
-            }
+            if (other.state == sign_state::positive)
+                return true; // 负 < 正
+            if (other.state == sign_state::negative)
+                return abs_greater(other); // 同为负数
         }
 
-        return -1;
+        // 默认返回 false（不应到达此处）
+        return false;
     }
-    inline i8 big_int::abs_less(const big_int &a, const big_int &b)
+
+    bool big_int::operator>=(const big_int &other) const
     {
-        auto a_size = a.data_.size();
-        auto b_size = b.data_.size();
-        if (a_size > b_size)
+        // 处理非数字或未定义状态
+        big_int tmp = {};
+        if (error(tmp, other))
         {
-            return 0;
+            return false;
         }
-        else if (a_size < b_size)
-        {
-            return 1;
-        }
-        else if (a_size == b_size)
-        {
-            for (i32 i = a_size - 1; i >= 0; i--)
-            {
-                if (a.data_[i] == b.data_[i])
-                {
-                    continue;
-                }
-                else
-                {
-                    if (a.data_[i] < b.data_[i])
-                    {
-                        return 1;
-                    }
-                    else
-                    {
-                        return 0;
-                    }
-                }
-            }
-            return -1;
-        }
-        return -1;
+        return !(*this < other);
     }
-    inline void big_int::abs_add(big_int &a, const big_int &b)
+
+    bool big_int::operator<=(const big_int &other) const
     {
-        u64 carry = 0;
-        i32 size_b = b.data_.size();
-        i32 size_a = a.data_.size();
-        if (size_a < size_b)
+        // 处理非数字或未定义状态
+        big_int tmp = {};
+        if (error(tmp, other))
         {
-            a.data_.resize(size_b, 0);
-            size_a = a.data_.size();
+            return false;
         }
-        i32 i = 0;
-        for (; i < size_b; i++)
+        return !(*this > other);
+    }
+
+    big_int big_int::operator<<(u64 shift) const
+    {
+        // 提前分配空间
+        big_int result;
+
+        // 错误处理
+        if (error(result))
         {
-            carry += static_cast<u64>(a.data_[i]) + static_cast<u64>(b.data_[i]);
-            a.data_[i] = carry & u32_max;
-            carry >>= 32;
+            return result;
         }
 
-        for (; carry != 0 and i < size_a; i++)
+        u64 block_shift = shift / 32;
+        u64 bit_shift = shift % 32;
+
+        // 溢出检查
+        if (data.size() + block_shift > max_length / 32)
         {
-            carry += a.data_[i];
-            a.data_[i] = carry & u32_max;
-            carry >>= 32;
+            big_int overflow_result = *this;
+            overflow_result.state = (state == sign_state::negative) ? sign_state::negative_overflow : sign_state::positive_overflow;
+            return overflow_result;
         }
 
+        result.data.resize(data.size() + block_shift, 0);
+
+        // 位移操作
+        u32 carry = 0;
+        for (size_t i = 0; i < data.size(); ++i)
+        {
+            u64 shifted_value = static_cast<u64>(data[i]) << bit_shift | carry;
+            result.data[block_shift + i] = static_cast<u32>(shifted_value & 0xFFFFFFFF);
+            carry = static_cast<u32>(shifted_value >> 32);
+        }
+
+        // 添加可能的进位
         if (carry != 0)
         {
-            a.data_.push_back(carry);
+            result.data.push_back(carry);
         }
 
-        a.format();
-        return;
+        result.format();
+        return result;
     }
-    inline void big_int::abs_sub(big_int &a, const big_int &b)
+
+    big_int big_int::operator>>(u64 shift) const
     {
-        // 确保 a >= b，否则抛出异常
-        if (&a == &abs_small(a, b))
+        // 提前分配空间
+        big_int result;
+
+        // 错误处理
+        if (error(result))
         {
-            throw std::runtime_error("big_int::abs_sub: a < b");
+            return result;
         }
 
-        u64 borrow = 0; // 借位标志
+        u64 block_shift = shift / 32;
+        u64 bit_shift = shift % 32;
 
-        // 处理 b 的每一位
-        for (i32 i = 0; i < b.data_.size(); ++i)
+        // 如果移位超出数据总长度
+        if (block_shift >= data.size())
         {
-            u64 temp = static_cast<u64>(a.data_[i]) - static_cast<u64>(b.data_[i]) - borrow;
-            a.data_[i] = temp & u32_max; // 保留低 32 位
-            borrow = (temp >> 32) & 0x1; // 提取借位标志
+            big_int result;
+            result.data = {0};
+            result.state = sign_state::positive;
+            return result;
         }
 
-        // 处理 a 的剩余位
-        for (i32 i = b.data_.size(); i < a.data_.size(); ++i)
+        result.data.resize(data.size() - block_shift);
+
+        // 位移操作
+        u32 carry = 0;
+        for (size_t i = data.size(); i > block_shift; --i)
         {
-            u64 temp = static_cast<u64>(a.data_[i]) - borrow;
-            a.data_[i] = temp & u32_max; // 保留低 32 位
-            borrow = (temp >> 32) & 0x1; // 提取借位标志
+            size_t current_index = i - 1;
+            u64 shifted_value = (static_cast<u64>(data[current_index]) >> bit_shift) | (static_cast<u64>(carry) << (32 - bit_shift));
+            result.data[current_index - block_shift] = static_cast<u32>(shifted_value);
+            carry = static_cast<u32>(data[current_index] & ((1ULL << bit_shift) - 1));
         }
 
-        a.format();
-        return;
+        result.format();
+        return result;
     }
-    inline void big_int::abs_mul(big_int &a, const big_int &b)
-    {
-        auto a_size = a.data_.size();
-        auto b_size = b.data_.size();
 
-        if (a.is_zero() or b.is_zero())
+    big_int big_int::operator<<=(u64 shift)
+    {
+        *this = (*this << shift);
+        return *this;
+    }
+    big_int big_int::operator>>=(u64 shift)
+    {
+        *this = (*this >> shift);
+        return *this;
+    }
+
+    // 辅助方法
+    // 大整数绝对值加法
+    big_int big_int::abs_add(const big_int &a, const big_int &b)
+    {
+        big_int result;
+        // 处理非数字或未定义状态
+        if (a.error(result, b))
         {
-            a.data_.clear();
-            a.sign_ = sign::positive;
-            return;
+            return result;
         }
 
-        ::std::vector<u64> temp(a.data_.size() + b.data_.size() + 1, 0);
-        for (u32 i = 0; i < a_size; i++)
+        result.data.clear(); // 确保结果数据为空
+
+        const size_t max_size = std::max(a.data.size(), b.data.size());
+        result.data.resize(max_size, 0);
+
+        u64 carry = 0; // 进位
+        for (size_t i = 0; i < max_size; ++i)
         {
-            for (u32 j = 0; j < b_size; j++)
+            u64 sum = carry;
+            if (i < a.data.size())
             {
-                u64 carry = static_cast<u64>(a.data_[i]) * static_cast<u64>(b.data_[j]);
-                temp[i + j] += carry & u32_max;
-                temp[i + j + 1] += carry >> 32;
+                sum += a.data[i];
             }
+            if (i < b.data.size())
+            {
+                sum += b.data[i];
+            }
+
+            result.data[i] = static_cast<u32>(sum & 0xFFFFFFFF); // 保留低 32 位
+            carry = sum >> 32;                                   // 提取高位作为进位
         }
 
-        a.data_.resize(temp.size() - 1);
-        for (u32 i = 0; i < temp.size() - 1; i++)
+        // 如果最后有进位，添加一个新的块
+        if (carry > 0)
         {
-            a.data_[i] = temp[i] & 0xffffffff;
-            temp[i + 1] += temp[i] >> 32;
+            result.data.push_back(static_cast<u32>(carry));
         }
 
-        a.format();
-        return;
+        result.format(); // 格式化数据
+        return result;
     }
-    inline void big_int::abs_div(big_int &a, const big_int &b, big_int &c)
+
+    // 大整数绝对值减法
+    big_int big_int::abs_sub(const big_int &a, const big_int &b)
     {
-        if (b.is_zero())
+        // 假设 a >= b (调用前需要保证，否则行为未定义)
+        big_int result = a;
+        // 处理非数字或未定义状态
+        if (a.error(result, b))
         {
-            throw std::runtime_error("big_int::abs_div: division by zero");
+            return result;
         }
 
-        c = 0;
+        u64 borrow = 0; // 借位
+        for (size_t i = 0; i < a.data.size(); ++i)
+        {
+            u64 sub = static_cast<u64>(a.data[i]) - borrow;
+            if (i < b.data.size())
+            {
+                sub -= b.data[i];
+            }
 
-        // 快速路径：如果 b == 1，则商为 a，余数为 0
-        if (b.data_.size() == 1 && b.data_[0] == 1)
-        {
-            a.swap(c);
-            return;
+            if (sub >= (1ULL << 32))
+            { // 借位
+                sub += (1ULL << 32);
+                borrow = 1;
+            }
+            else
+            {
+                borrow = 0;
+            }
+
+            result.data[i] = static_cast<u32>(sub);
         }
-        // std::cout << "aaaaa:1\n";
-        // std::cout << a.to_dec() << '/' << b.to_dec() << '\n';
-        // 如果 a < b，则商为 0，余数为 a
-        if (abs_less(a, b))
+
+        // 如果 a 的长度大于 b，确保借位正确传播到剩余块
+        for (size_t i = b.data.size(); i < a.data.size() && borrow > 0; ++i)
         {
-            // std::cout << "a < b\n";
-            c = 0;
-            return;
+            u64 sub = static_cast<u64>(a.data[i]) - borrow;
+            if (sub >= (1ULL << 32))
+            {
+                sub += (1ULL << 32);
+                borrow = 1;
+            }
+            else
+            {
+                borrow = 0;
+            }
+            result.data[i] = static_cast<u32>(sub);
         }
-        // std::cout << "aaaaa:2\n";
-        // 商
-        auto &result = c;
-        // 余数
-        auto &remainder = a;
+
+        // 最终借位应为 0，若不为 0，则说明调用时未保证 a >= b
+        if (borrow > 0)
+        {
+            throw std::runtime_error("abs_sub called with a < b, which is undefined behavior");
+        }
+
+        result.format(); // 格式化数据
+        return result;
+    }
+
+    // 大整数除法
+    big_int big_int::division(const big_int &a, const big_int &b, big_int &remainder)
+    {
+        big_int result;
+
+        // 处理非数字或未定义状态
+        if (a.error(result, b))
+        {
+            return result;
+        }
+
+        // 处理除 0
+        if (b.data.size() == 1 && b.data[0] == 0)
+        {
+            result.state = sign_state::not_a_number;
+            return result;
+        }
+
+        // 处理 abs(a) == abs(b)
+        if (a.data == b.data)
+        {
+            remainder = 0;
+            result = 1;
+            if (a.state == b.state)
+            {
+                result.state = sign_state::positive;
+            }
+            else
+            {
+                result.state = sign_state::negative;
+            }
+            return result; // 结果为 1
+        }
+
+        // 处理 a < b
+        if (a < b)
+        {
+            remainder = a;
+            result = 0;
+            return result; // 结果为 1
+        }
+
+        // 被除数
+        remainder = a;
         // 临时除数
         big_int temp = b;
         // 临时倍率
-        big_int temp_multiplier = 1;
-        // number 1
-        big_int num_1 = 1;
-        // std::cout << "aaaaa:3\n";
+        big_int temp_multiplier = big_int(1);
+
         // 快速左移
-        if (remainder.data_.size() > temp.data_.size() + 1)
+        if (remainder.data.size() > temp.data.size() + 1)
         {
-            size_t shift_blocks = (remainder.data_.size() - temp.data_.size() - 1);
+            size_t shift_blocks = (remainder.data.size() - temp.data.size() - 1);
             temp <<= shift_blocks * 32;
             temp_multiplier <<= shift_blocks * 32;
         }
@@ -1058,11 +788,14 @@ namespace __NAMESPACE_NAME__
         temp >>= 1;
         temp_multiplier >>= 1;
 
-        // std::cout << temp.to_dec() << std::endl;
-
         // 开始除法
-        while ((temp_multiplier >= num_1))
+        while ((temp_multiplier >= big_int(1)))
         {
+            // 输出调试信息
+            // std::cout << "temp: " << temp.to_string() << std::endl;
+            // std::cout << "temp_multiplier: " << temp_multiplier.to_string() << std::endl;
+            // std::cout << "remainder: " << remainder.to_string() << std::endl;
+            // std::cout << "result: " << result.to_string() << std::endl;
 
             if (remainder >= temp)
             {
@@ -1074,16 +807,289 @@ namespace __NAMESPACE_NAME__
             temp_multiplier >>= 1;
         }
 
-        return;
+        // 调整符号
+        if ((a.state == sign_state::negative) != (b.state == sign_state::negative))
+        {
+            result.state = sign_state::negative;
+        }
+        remainder.state = a.state;
+
+        return result;
     }
 
-    inline void big_int::format()
+    big_int big_int::abs(const big_int &num)
     {
-        // 去除多余的0
-        while (this->data_.size() >= 2 and
-               this->data_.back() == 0)
+        big_int result = num;
+
+        // 处理非数字或未定义状态
+        if (result.error(result))
         {
-            this->data_.pop_back();
+            return result;
+        }
+
+        // 绝对值
+        result.state = sign_state::positive;
+        return result;
+    }
+
+    bool big_int::abs_less(const big_int &other) const
+    {
+        const auto this_length = this->data.size();
+        const auto other_length = other.data.size();
+
+        // 1. 比较长度
+        if (this_length != other_length)
+        {
+            return this_length < other_length;
+        }
+
+        // 2. 比较数据（从高位到低位）
+        const auto &this_data = this->data;
+        const auto &other_data = other.data;
+
+        for (i64 i = this_length - 1; i >= 0; --i)
+        {
+            if (this_data[i] != other_data[i])
+            {
+                return this_data[i] < other_data[i];
+            }
+        }
+
+        // 3. 数据完全相等
+        return false;
+    }
+
+    bool big_int::abs_greater(const big_int &other) const
+    {
+        u64 this_length = this->data.size();
+        u64 other_length = other.data.size();
+
+        // 比较长度
+        if (this_length != other_length)
+        {
+            return this_length > other_length;
+        }
+
+        // 长度相同，从高位向低位逐位比较
+        for (i64 i = this_length - 1; i >= 0; --i)
+        {
+            if (this->data[i] != other.data[i])
+            {
+                return this->data[i] > other.data[i];
+            }
+        }
+
+        // 如果完全相等，返回 false
+        return false;
+    }
+
+    // 格式化函数
+    void big_int::format()
+    {
+        //  移除高位的多余 0
+        while (data.size() > 1 && data.back() == 0)
+        {
+            data.pop_back();
+        }
+
+        // 如果数据为零，确保符号为正
+        if (data.size() == 1 && data[0] == 0)
+        {
+            state = sign_state::positive;
         }
     }
+
+    // 如果 this为 非数，返回 true
+    bool big_int::error(big_int &out) const
+    {
+        if (this->state == sign_state::not_a_number)
+        {
+            out.state = sign_state::not_a_number;
+            out.data = {0};
+            return true;
+        }
+        else if (this->state == sign_state::undefined)
+        {
+            out.state = sign_state::undefined;
+            out.data = {0};
+            return true;
+        }
+        else if (this->state == sign_state::negative_overflow)
+        {
+            out.state = sign_state::negative_overflow;
+            out.data = {0};
+            return true;
+        }
+        else if (this->state == sign_state::positive_overflow)
+        {
+            out.state = sign_state::positive_overflow;
+            out.data = {0};
+            return true;
+        }
+        return false;
+    }
+
+    // 如果 this 和 other 其一为 非数，返回 true
+    bool big_int::error(big_int &out, const big_int &other) const
+    {
+        if (this->state == sign_state::undefined or other.state == sign_state::undefined)
+        {
+            out.state = sign_state::undefined;
+            out.data = {0};
+            return true;
+        }
+        else if (this->state == sign_state::not_a_number or other.state == sign_state::not_a_number)
+        {
+            out.state = sign_state::not_a_number;
+            out.data = {0};
+            return true;
+        }
+        else if (this->state == sign_state::negative_overflow or other.state == sign_state::negative_overflow)
+        {
+            out.state = sign_state::negative_overflow;
+            out.data = {0};
+            return true;
+        }
+        else if (this->state == sign_state::positive_overflow or other.state == sign_state::positive_overflow)
+        {
+            out.state = sign_state::positive_overflow;
+            out.data = {0};
+            return true;
+        }
+        return false;
+    }
+
+    std::vector<u32> big_int::decimal_to_binary(const std::string &decimal)
+    {
+        // 将十进制大数存储为逆序的 9 位块（以 10^9 为单位）
+        const u64 BASE = 1000000000; // 每块存储 9 位十进制数
+        std::vector<u64> blocks;
+        blocks.reserve((decimal.size()) * log2_log10);
+
+        // 将十进制字符串分块存储
+        for (i64 i = decimal.size(); i > 0; i -= 9)
+        {
+            i64 start = std::max(i64(0), i - 9);
+            blocks.push_back(std::stoull(decimal.substr(start, i - start)));
+        }
+
+        std::vector<u32> binary_result; // 存储二进制结果（按 32 位块）
+
+        u64 current_block = 0;     // 当前 32 位块
+        int current_bit_count = 0; // 当前块的已填充位数
+
+        // 持续进行高精度除法，直到所有块被处理完
+        while (!blocks.empty())
+        {
+            u64 remainder = 0;
+
+            // 按高精度处理每个块
+            for (i64 i = blocks.size() - 1; i >= 0; --i)
+            {
+                u64 current = remainder * BASE + blocks[i];
+                blocks[i] = current >> 1; // 商作为新的块值
+                remainder = current & 1;  // 更新余数
+            }
+
+            // 将余数（当前位）存入当前块
+            current_block |= (remainder << current_bit_count);
+            current_bit_count++;
+
+            // 当前块填满 32 位后，存储并重置
+            if (current_bit_count == 32)
+            {
+                binary_result.push_back(static_cast<u32>(current_block));
+                current_block = 0;
+                current_bit_count = 0;
+            }
+
+            // 删除所有前导零块
+            while (!blocks.empty() && blocks.back() == 0)
+            {
+                blocks.pop_back();
+            }
+        }
+
+        // 处理剩余未填满的块
+        if (current_bit_count > 0)
+        {
+            binary_result.push_back(static_cast<u32>(current_block));
+        }
+
+        return binary_result;
+    }
+
+    std::string big_int::binary_to_decimal(const std::vector<u32> &binary)
+    {
+        if (binary.empty())
+            return "0";
+        if (binary.size() == 1 and binary[0] == 0)
+            return "0";
+        const u64 BASE = 1000000000;     // 每块存储 9 位十进制数
+        std::vector<u64> decimal_blocks; // 存储十进制大数的块（逆序）
+        decimal_blocks.reserve((binary.size() * 32) * log10_log2);
+
+        // 遍历每个 32 位块
+        for (auto it = binary.rbegin(); it != binary.rend(); ++it)
+        {
+            u64 carry = *it; // 当前块作为进位加入十进制
+
+            // 更新现有十进制块
+            for (size_t i = 0; i < decimal_blocks.size(); ++i)
+            {
+                carry += decimal_blocks[i] * (1ULL << 32);
+                decimal_blocks[i] = carry % BASE;
+                carry /= BASE;
+            }
+
+            // 如果有剩余的进位，创建新块
+            while (carry > 0)
+            {
+                decimal_blocks.push_back(carry % BASE);
+                carry /= BASE;
+            }
+        }
+
+        // 构建最终结果字符串
+        std::string result = std::to_string(decimal_blocks.back());
+        for (i64 i = decimal_blocks.size() - 2; i >= 0; --i)
+        {
+            std::string block = std::to_string(decimal_blocks[i]);
+            result += std::string(9 - block.size(), '0') + block; // 填充零补齐块长度
+        }
+
+        return result;
+    }
+
+    bool big_int::is_valid_number(const std::string &str)
+    {
+        // 空字符串非法
+        if (str.empty())
+        {
+            return false;
+        }
+
+        // 第一个字符必须是数字或符号（+/-）
+        size_t start = 0;
+        if (str[0] == '+' || str[0] == '-')
+        {
+            if (str.size() == 1)
+            {
+                return false; // 只有符号没有数字
+            }
+            start = 1; // 跳过符号
+        }
+
+        // 检查后续字符是否全为数字
+        for (size_t i = start; i < str.size(); ++i)
+        {
+            if (!std::isdigit(str[i]))
+            {
+                return false; // 非数字字符非法
+            }
+        }
+
+        return true;
+    }
+
 }
