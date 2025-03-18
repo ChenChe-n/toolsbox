@@ -7,217 +7,261 @@
 #include <condition_variable>
 #include <thread>
 #include <stdexcept>
-#include <list>
 
-namespace __NAMESPACE_NAME__
+namespace __NAMESPACE_NAME__::thread
 {
-	namespace thread
+	inline void sleep_for(__NAMESPACE_NAME__::time::seconds_ duration) noexcept
 	{
-
-		// 休眠策略
-		enum class sleep_level : uint8_t
+		if (duration.count() < 0)
 		{
-			level_v0, // 无休眠
-			level_v1, // yield
-			level_v2, // 1ms
-			level_v3, // 10ms
-			level_v4, // 100ms
-			level_v5, // 1s
-			level_v6, // 1m
-			level_v7, // 1h
-			level_v8  // 1d
-		};
-
-		// 根据休眠策略执行休眠
-		inline void sleep_for(sleep_level level)
+			return;
+		}
+		if (duration.count() == 0.0)
 		{
-			using namespace std::chrono;
-			switch (level)
+			std::this_thread::yield();
+			return;
+		}
+
+		try
+		{
+			std::this_thread::sleep_for(duration);
+		}
+		catch (const std::exception &e)
+		{
+			// std::cerr << e.what() << '\n';
+		}
+
+		return;
+	}
+
+	// 互斥锁
+	class mutex_v1
+	{
+	public:
+		// 禁止拷贝和赋值
+		mutex_v1(const mutex_v1 &) = delete;
+		mutex_v1 &operator=(const mutex_v1 &) = delete;
+
+		// 禁止移动语义
+		mutex_v1(mutex_v1 &&other) noexcept = delete;
+		mutex_v1 &operator=(mutex_v1 &&other) noexcept = delete;
+
+		inline mutex_v1(__NAMESPACE_NAME__::time::seconds_ duration = __NAMESPACE_NAME__::time::seconds_(0.0)) noexcept
+			: sleep_seconds_(duration)
+		{
+			flag_.clear();
+		}
+
+		inline bool try_lock() noexcept
+		{
+			return !flag_.test_and_set(std::memory_order_acquire);
+		}
+
+		inline bool lock() noexcept
+		{
+			while (true)
 			{
-			case sleep_level::level_v0:
-				break; // 无操作
-			case sleep_level::level_v1:
-				std::this_thread::yield();
-				break;
-			case sleep_level::level_v2:
-				std::this_thread::sleep_for(__NAMESPACE_NAME__::time::seconds(0.001));
-				break;
-			case sleep_level::level_v3:
-				std::this_thread::sleep_for(__NAMESPACE_NAME__::time::seconds(0.01));
-				break;
-			case sleep_level::level_v4:
-				std::this_thread::sleep_for(__NAMESPACE_NAME__::time::seconds(0.1));
-				break;
-			case sleep_level::level_v5:
-				std::this_thread::sleep_for(__NAMESPACE_NAME__::time::seconds(1));
-				break;
-			case sleep_level::level_v6:
-				std::this_thread::sleep_for(__NAMESPACE_NAME__::time::seconds(60));
-				break;
-			case sleep_level::level_v7:
-				std::this_thread::sleep_for(__NAMESPACE_NAME__::time::seconds(60 * 60));
-				break;
-			case sleep_level::level_v8:
-				std::this_thread::sleep_for(__NAMESPACE_NAME__::time::seconds(60 * 60 * 24));
-				break;
-			default:
-				break;
+				if (try_lock())
+				{
+					return true;
+				}
+				sleep_for(sleep_seconds_);
+			}
+			return false;
+		}
+
+		inline bool try_lock_for(const __NAMESPACE_NAME__::time::seconds_ seconds) noexcept
+		{
+			auto start_time = __NAMESPACE_NAME__::time::now();
+			auto end_time = start_time + seconds;
+			while (__NAMESPACE_NAME__::time::now() >= end_time)
+			{
+				if (try_lock())
+				{
+					return true;
+				}
+				sleep_for(sleep_seconds_);
+			}
+			return false;
+		}
+
+		inline bool try_lock_until(const __NAMESPACE_NAME__::time::time_point_ time_point) noexcept
+		{
+			while (__NAMESPACE_NAME__::time::now() < time_point)
+			{
+				if (try_lock())
+				{
+					return true;
+				}
+				sleep_for(sleep_seconds_);
+			}
+			return false;
+		}
+
+		inline bool unlock() noexcept
+		{
+			flag_.clear(std::memory_order_release);
+			return true;
+		}
+
+	private:
+		std::atomic_flag flag_;
+		__NAMESPACE_NAME__::time::seconds_ sleep_seconds_;
+	};
+
+	// 递归锁
+	class mutex_v2
+	{
+	public:
+		// 禁止拷贝和赋值
+		mutex_v2(const mutex_v2 &) = delete;
+		mutex_v2 &operator=(const mutex_v2 &) = delete;
+
+		// 禁止移动语义
+		mutex_v2(mutex_v2 &&other) noexcept = delete;
+		mutex_v2 &operator=(mutex_v2 &&other) noexcept = delete;
+
+		inline mutex_v2(__NAMESPACE_NAME__::time::seconds_ duration = __NAMESPACE_NAME__::time::seconds_(0.0)) noexcept
+			: sleep_seconds_(duration), count_(0)
+		{
+		}
+
+		inline bool try_lock() noexcept
+		{
+			auto current_thread_id = std::this_thread::get_id();
+			std::thread::id expected = std::thread::id();
+
+			// 如果当前线程已经持有锁，增加计数
+			if (thread_id_.load(std::memory_order_relaxed) == current_thread_id)
+			{
+				count_.fetch_add(1, std::memory_order_relaxed); // 原子操作
+				return true;
+			}
+
+			// 否则，尝试获取锁
+			if (thread_id_.compare_exchange_strong(expected, current_thread_id, std::memory_order_acquire))
+			{
+				// 获取锁成功，设置计数为 1
+				count_.store(1, std::memory_order_relaxed);
+				return true;
+			}
+			return false;
+		}
+
+		inline bool lock() noexcept
+		{
+			while (true)
+			{
+				if (try_lock())
+				{
+					return true;
+				}
+				sleep_for(sleep_seconds_);
+			}
+			return false;
+		}
+
+		inline bool try_lock_for(const __NAMESPACE_NAME__::time::seconds_ seconds) noexcept
+		{
+			auto start_time = __NAMESPACE_NAME__::time::now();
+			auto end_time = start_time + seconds;
+			while (__NAMESPACE_NAME__::time::now() >= end_time)
+			{
+				if (try_lock())
+				{
+					return true;
+				}
+				sleep_for(sleep_seconds_);
 			}
 		}
 
-		// 互斥锁
-		class mutex_v1
+		inline bool try_lock_until(const __NAMESPACE_NAME__::time::time_point_ time_point) noexcept
 		{
-		public:
-			explicit mutex_v1(sleep_level level = sleep_level::level_v2)
-				: sleep_level_(level)
+			while (__NAMESPACE_NAME__::time::now() < time_point)
 			{
-				flag_.clear();
-			}
-
-			void lock()
-			{
-				while (flag_.test_and_set(std::memory_order_acquire))
+				if (try_lock())
 				{
-					sleep_for(sleep_level_);
-				}
-				return;
-			}
-
-			bool try_lock()
-			{
-				return !flag_.test_and_set(std::memory_order_acquire);
-			}
-
-			void unlock()
-			{
-				flag_.clear(std::memory_order_release);
-				return;
-			}
-
-		private:
-			std::atomic_flag flag_;
-			sleep_level sleep_level_;
-		};
-
-		// 递归锁
-		class mutex_v2
-		{
-		public:
-			explicit mutex_v2(sleep_level level = sleep_level::level_v2)
-				: sleep_level_(level), count_(0)
-			{
-			}
-
-			void lock()
-			{
-				auto current_thread_id = std::this_thread::get_id();
-				std::thread::id expected = std::thread::id();
-
-				// 如果当前线程已经持有锁，增加计数
-				if (thread_id_.load(std::memory_order_relaxed) == current_thread_id)
-				{
-					count_.fetch_add(1, std::memory_order_relaxed); // 原子操作
-					return;
-				}
-
-				// 否则，尝试获取锁
-				while (!thread_id_.compare_exchange_weak(expected, current_thread_id, std::memory_order_acquire))
-				{
-					expected = std::thread::id(); // 重置 expected
-					sleep_for(sleep_level_);
-				}
-
-				// 获取锁成功，设置计数为 1
-				count_.store(1, std::memory_order_relaxed);
-			}
-
-			bool try_lock()
-			{
-				auto current_thread_id = std::this_thread::get_id();
-				std::thread::id expected = std::thread::id();
-
-				// 如果当前线程已经持有锁，增加计数
-				if (thread_id_.load(std::memory_order_relaxed) == current_thread_id)
-				{
-					count_.fetch_add(1, std::memory_order_relaxed); // 原子操作
 					return true;
 				}
+				sleep_for(sleep_seconds_);
+			}
+			return false;
+		}
 
-				// 否则，尝试获取锁
-				if (thread_id_.compare_exchange_strong(expected, current_thread_id, std::memory_order_acquire))
-				{
-					// 获取锁成功，设置计数为 1
-					count_.store(1, std::memory_order_relaxed);
-					return true;
-				}
+		inline bool unlock() noexcept
+		{
+			auto current_thread_id = std::this_thread::get_id();
+			if (thread_id_.load(std::memory_order_relaxed) != current_thread_id)
+			{
 				return false;
 			}
 
-			void unlock()
+			// 减少计数
+			if (count_.fetch_sub(1, std::memory_order_release) == 1)
 			{
-				auto current_thread_id = std::this_thread::get_id();
-				if (thread_id_.load(std::memory_order_relaxed) != current_thread_id)
-				{
-					throw std::runtime_error("Attempt to unlock a mutex not owned by the current thread");
-				}
-
-				// 减少计数
-				if (count_.fetch_sub(1, std::memory_order_release) == 1)
-				{
-					// 如果计数为 0，释放锁
-					thread_id_.store(std::thread::id(), std::memory_order_release);
-				}
+				// 如果计数为 0，释放锁
+				thread_id_.store(std::thread::id(), std::memory_order_release);
+				return true;
 			}
+			return false;
+		}
 
-		private:
-			std::atomic<std::thread::id> thread_id_;
-			std::atomic<u64> count_;
-			sleep_level sleep_level_;
-		};
+	private:
+		std::atomic<std::thread::id> thread_id_;
+		std::atomic<u64> count_;
+		__NAMESPACE_NAME__::time::seconds_ sleep_seconds_;
+	};
 
-		// std::mutex
-		using mutex_v3 = std::mutex;
+	// std::mutex
+	using mutex_v3 = std::mutex;
 
-		// 锁管理类
-		template <typename Mutex>
-		class lock
+	// 锁管理类
+	template <typename Mutex>
+	class lock
+	{
+	public:
+		using mutex_type = Mutex;
+
+		lock(mutex_type &mutex) noexcept
+			: mutex_(&mutex)
 		{
-		public:
-			using mutex_type = Mutex;
-
-			explicit lock(mutex_type &mutex) : mutex_(mutex)
+			if (mutex_ != nullptr)
 			{
-				mutex_.lock();
+				(*mutex_).lock();
 			}
+		}
 
-			~lock()
+		~lock() noexcept
+		{
+			if (mutex_ != nullptr)
 			{
-				mutex_.unlock();
+				(*mutex_).unlock();
 			}
+		}
 
-			// 禁止拷贝和赋值
-			lock(const lock &) = delete;
-			lock &operator=(const lock &) = delete;
+		// 禁止拷贝和赋值
+		lock(const lock &) = delete;
+		lock &operator=(const lock &) = delete;
 
-			// 支持移动语义
-			lock(lock &&other) noexcept : mutex_(other.mutex_)
+		// 支持移动语义
+		lock(lock &&other) noexcept
+			: mutex_(other.mutex_)
+		{
+			other.mutex_ = nullptr;
+		}
+
+		lock &operator=(lock &&other) noexcept
+		{
+			if (this != &other)
 			{
+				mutex_ = other.mutex_;
 				other.mutex_ = nullptr;
 			}
+			return *this;
+		}
 
-			lock &operator=(lock &&other) noexcept
-			{
-				if (this != &other)
-				{
-					mutex_ = other.mutex_;
-					other.mutex_ = nullptr;
-				}
-				return *this;
-			}
+	private:
+		mutex_type *mutex_;
+	};
 
-		private:
-			mutex_type &mutex_;
-		};
-	}
 }

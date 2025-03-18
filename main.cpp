@@ -4,53 +4,60 @@
 #include <chrono>
 #include <thread>
 #include <format>
+#include <map>
+#include <unordered_map>
+#include <thread>
+#include <string_view>
+#include <SFML/Graphics.hpp>
 
-i32 main() {
-    std::cerr << "程序运行时间: " << ts::time::elapsed_time()<< std::endl;
-
-    auto t1 = ts::time::now();
-    ts::thread::mutex_v1 mutex;
-    i64 shared_data = 0;
-
-    auto worker = [&mutex, &shared_data](int id) {
-        for (int i = 0; i < 50'000'000; ++i) {
-            {
-                ts::thread::lock lock(mutex); // 加锁
-                shared_data = shared_data * 3 / 2 + 1;
-            }
-        }
-        };
-
-    std::vector<std::thread> threads;
-    for (int i = 0; i < 2; ++i) {
-        std::cout << "Thread " << i << " started\n";
-        threads.emplace_back(worker, i);
-    }
-
-    for (auto& t : threads) {
-        t.join();
-    }
-    auto t2 = ts::time::now();
-
-    std::cout << "Final shared_data: " << shared_data << "\n";
-    auto t3 = ts::time::now();
-    i64 n = 0;
-    for (i64 i = 0; i < 100'000'000; ++i) {
-        n = n * 3 / 2 + 1;
-    }
-    auto t4 = ts::time::now();
-    std::cout << "Final n: " << n << "\n";
-
-
-    std::cerr << "程序运行时间: " << ts::time::elapsed_time()<< std::endl;
-    std::cerr << "lock运行时间: " << (t2 - t1) << "s" << std::endl;
-    std::cerr << "not_运行时间: " << (t4 - t3) << "s" << std::endl;
-
-    for (size_t i = 0; i < 64; i++)
+bool ppp(const std::string_view str1, const std::string_view str2)
+{
+    if (str1.size() != str2.size())
     {
-        std::this_thread::sleep_for(ts::time::seconds(0.001));
-        std::cerr << "程序运行时间: " << ts::time::elapsed_time()<< std::endl;
+        return false;
     }
+    for (size_t i = 0; i < str1.size(); i++)
+    {
+        if (str1[i] != str2[i])
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+int main()
+{
+    auto out = ts::io::logging();
+    // for (size_t i = 0; i < 256; i++)
+    // {
+    //     out.error("error\t错误");
+    //     out.warning("warning\t警告");
+    //     out.info("info\t信息");
+    //     out.text("text\t文本");
+    //     out.base("base\t基本");
+    // }
+    std::string str_a = "1235771957861985767";
+    std::string str_b = "41192561297461946195";
+    std::string str_c = "50904612123914409968303665756671752760";
+    // if (ppp(a_py, b_cpp))
+    // {
+    //     std::cout << "a==b\n";
+    // }
+    // else
+    // {
+    //     std::cout << "a!=b\n";
+    // }
+    ts::big_int a(str_a);
+    ts::big_int b(str_b);
+    ts::big_int c(str_c);
+    out.info(a.to_dec());
+    out.info(b.to_dec());
+    out.info(c.to_dec());
+    a *= b;
+    out.info(a.to_dec());
+    out.info((a == c) ? "a==b" : "a!=b");
 
     return 0;
 }
