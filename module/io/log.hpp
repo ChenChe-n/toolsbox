@@ -22,7 +22,8 @@ namespace __NAMESPACE_NAME__::io
         };
         inline std::string format(log_type logging_type, const std::string_view str)
         {
-            auto mt = __NAMESPACE_NAME__::time::get_current_date();
+            auto date = __NAMESPACE_NAME__::time::now().to_date().get_date().to_string("%Y-%m-%d %H:%M:%S");
+            auto time = __NAMESPACE_NAME__::time::elapsed_time().fseconds();
             switch (logging_type)
             {
             case log_type::base:
@@ -32,34 +33,30 @@ namespace __NAMESPACE_NAME__::io
                 break;
             case log_type::text:
                 return std::format(
-                    "\033[1;36m[TEXT]     {:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03}  {:.03f}\033[0m \t{}\n", // 蓝色
-                    mt.year_, mt.month_, mt.day_,
-                    mt.hour_, mt.minute_, mt.second_, mt.milli_second_,
-                    __NAMESPACE_NAME__::time::elapsed_time().count(),
+                    "\033[1;36m[TEXT]     {}  {:.06f}\033[0m \t{}\n", // 蓝色
+                    date,
+                    time,
                     str);
                 break;
             case log_type::info:
                 return std::format(
-                    "\033[1;32m[INFO]     {:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03}  {:.03f}\033[0m \t{}\n", // 绿色
-                    mt.year_, mt.month_, mt.day_,
-                    mt.hour_, mt.minute_, mt.second_, mt.milli_second_,
-                    __NAMESPACE_NAME__::time::elapsed_time().count(),
+                    "\033[1;32m[INFO]     {}  {:.06f}\033[0m \t{}\n", // 绿色
+                    date,
+                    time,
                     str);
                 break;
             case log_type::warning:
                 return std::format(
-                    "\033[1;33m[WARNING]  {:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03}  {:.03f}\033[0m \t{}\n", // 黄色
-                    mt.year_, mt.month_, mt.day_,
-                    mt.hour_, mt.minute_, mt.second_, mt.milli_second_,
-                    __NAMESPACE_NAME__::time::elapsed_time().count(),
+                    "\033[1;33m[WARNING]  {}  {:.06f}\033[0m \t{}\n", // 黄色
+                    date,
+                    time,
                     str);
                 break;
             case log_type::error:
                 return std::format(
-                    "\033[1;31m[ERROR]    {:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03}  {:.03f}\033[0m \t{}\n", // 红色
-                    mt.year_, mt.month_, mt.day_,
-                    mt.hour_, mt.minute_, mt.second_, mt.milli_second_,
-                    __NAMESPACE_NAME__::time::elapsed_time().count(),
+                    "\033[1;31m[ERROR]    {}  {:.06f}\033[0m \t{}\n", // 红色
+                    date,
+                    time,
                     str);
                 break;
             default:
