@@ -474,7 +474,7 @@ namespace __NAMESPACE_NAME__
 				// %% 	百分号
 				inline std::string to_string(const std::string &str) const noexcept
 				{
-					char buffer[256];
+					char buffer[256] = { 0 };
 					strftime(buffer, sizeof(buffer), str.c_str(), &this->tm_);
 					std::string out(buffer);
 					return out;
@@ -542,7 +542,9 @@ namespace __NAMESPACE_NAME__
 			// 时间点转日期
 			inline void convert_time_point() noexcept
 			{
-				time_t t = std::chrono::system_clock::to_time_t(this->time_point_);
+				auto d1 = this->time_point_ - time::program_start_time_;
+				auto d2 = time::program_start_sys_time_ + d1.to_seconds();
+				time_t t = std::chrono::system_clock::to_time_t(d2);
 #ifdef _WIN32
 				// Windows 使用 localtime_s
 				localtime_s(&(date_info_.tm_), &t);
@@ -565,15 +567,21 @@ namespace __NAMESPACE_NAME__
 		}
 
 		// 获取程序运行时间
-		static inline auto elapsed_time() noexcept
+		static inline duration elapsed_time() noexcept
 		{
 			return now() - program_start_time_;
 		}
 
 		// 获取程序启动时间点
-		static inline time_point start_time() noexcept
+		static inline const time_point &start_time() noexcept
 		{
 			return program_start_time_;
+		}
+
+		// 获取程序启动时间点
+		static inline const std::chrono::system_clock::time_point &start_sys_time() noexcept
+		{
+			return program_start_sys_time_;
 		}
 
 		// 禁止实例化
@@ -582,6 +590,7 @@ namespace __NAMESPACE_NAME__
 
 	private:
 		// 程序启动时间点
-		static inline time_point program_start_time_ = now();
+		const static inline time_point program_start_time_ = now();
+		const static inline std::chrono::system_clock::time_point program_start_sys_time_ = std::chrono::system_clock::now();
 	};
 }

@@ -10,8 +10,5 @@ int main()
         out.info("test");
         ts::thread::sleep_for(ts::time::duration(0.001));
     }
-
-
-    // out.info("init ok");
     return 0;
 }
