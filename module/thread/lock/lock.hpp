@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../base/using.hpp"
-#include "../time/time.hpp"
+#include "../../base/using.hpp"
+#include "../../time/time.hpp"
 
 #include <atomic>
 #include <condition_variable>
@@ -46,7 +46,8 @@ namespace __NAMESPACE_NAME__::thread
         mutex_v1(mutex_v1 &&other) noexcept = delete;
         mutex_v1 &operator=(mutex_v1 &&other) noexcept = delete;
 
-        inline mutex_v1(const __NAMESPACE_NAME__::time::duration duration = 0.0) noexcept
+        // 构造函数
+        inline mutex_v1(const __NAMESPACE_NAME__::time::duration duration = 0.001) noexcept
             : sleep_duration_(duration)
         {
             flag_.clear();
@@ -74,7 +75,7 @@ namespace __NAMESPACE_NAME__::thread
         {
             auto start_time = __NAMESPACE_NAME__::time::now();
             auto end_time = start_time + duration;
-            while (__NAMESPACE_NAME__::time::now() >= end_time)
+            while (__NAMESPACE_NAME__::time::now() < end_time)
             {
                 if (try_lock())
                 {
@@ -121,7 +122,7 @@ namespace __NAMESPACE_NAME__::thread
         mutex_v2(mutex_v2 &&other) noexcept = delete;
         mutex_v2 &operator=(mutex_v2 &&other) noexcept = delete;
 
-        inline mutex_v2(__NAMESPACE_NAME__::time::duration duration = 0.0) noexcept
+        inline mutex_v2(__NAMESPACE_NAME__::time::duration duration = 0.001) noexcept
             : sleep_duration_(duration), count_(0)
         {
         }
@@ -165,7 +166,7 @@ namespace __NAMESPACE_NAME__::thread
         {
             auto start_time = __NAMESPACE_NAME__::time::now();
             auto end_time = start_time + duration;
-            while (__NAMESPACE_NAME__::time::now() >= end_time)
+            while (__NAMESPACE_NAME__::time::now() < end_time)
             {
                 if (try_lock())
                 {
@@ -262,6 +263,40 @@ namespace __NAMESPACE_NAME__::thread
 
     private:
         mutex_type *mutex_;
+    };
+
+    template <typename mutex, typename T>
+    class box_lock
+    {
+    public:
+        box_lock() = delete;
+        box_lock(const box_lock &) = delete;
+        box_lock &operator=(const box_lock &) = delete;
+        box_lock(box_lock &&) = delete;
+        box_lock &operator=(box_lock &&) = delete;
+
+        inline box_lock(mutex &mutex__, T &data) noexcept
+            : mutex_(mutex__), data_(data)
+        {
+            mutex_.lock();
+        }
+        inline ~box_lock()
+        {
+            mutex_.unlock();
+        }
+
+        inline box_lock& operator=(const T &data){
+            data_ = data;
+            return *this;
+        }
+        inline box_lock& operator=(const T &&data){
+            data_ = std::move(data);
+            return *this;
+        }
+
+        T &data_;
+    private:
+        mutex &mutex_;
     };
 
 }

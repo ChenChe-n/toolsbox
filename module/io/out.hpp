@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../base/using.hpp"
-#include "../thread/lock.hpp"
+#include "../thread/lock/lock.hpp"
 
 #include <string_view>
 #include <memory>

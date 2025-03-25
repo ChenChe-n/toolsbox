@@ -21,12 +21,12 @@ public:
     // 编码base16
     constexpr static inline ::std::string encode(const ::std::string &data)
     {
-        return encode_c(reinterpret_cast<const byte *>(data.data()), data.size());
+        return encode_c(static_cast<const byte *>(static_cast<const void *>(data.data())), data.size());
     }
     // 编码base16
     constexpr static inline ::std::string encode(const ::std::vector<byte> &data)
     {
-        return encode_c(reinterpret_cast<const byte *>(data.data()), data.size());
+        return encode_c(static_cast<const byte *>(data.data()), data.size());
     }
     // 解码base16
     constexpr static inline ::std::vector<byte> decoder_c(const byte *data, const u64 size) noexcept
@@ -45,12 +45,12 @@ public:
     // 解码base16
     constexpr static inline ::std::vector<byte> decoder(const ::std::string &data)
     {
-        return decoder_c(reinterpret_cast<const byte *>(data.data()), data.size());
+        return decoder_c(static_cast<const byte *>(static_cast<const void *>(data.data())), data.size());
     }
     // 解码base16
     constexpr static inline ::std::vector<byte> decoder(const ::std::vector<byte> &data)
     {
-        return decoder_c(reinterpret_cast<const byte *>(data.data()), data.size());
+        return decoder_c(static_cast<const byte *>(data.data()), data.size());
     }
     // 判断是否是base16
     constexpr static inline bool is_base16_c(const byte *data, const u64 size) noexcept
@@ -75,12 +75,12 @@ public:
     // 判断是否是base16
     constexpr static inline bool is_base16(const ::std::string &data)
     {
-        return is_base16_c(reinterpret_cast<const byte *>(data.data()), data.size());
+        return is_base16_c(static_cast<const byte *>(static_cast<const void *>(data.data())), data.size());
     }
     // 判断是否是base16
     constexpr static inline bool is_base16(const ::std::vector<byte> &data)
     {
-        return is_base16_c(reinterpret_cast<const byte *>(data.data()), data.size());
+        return is_base16_c(static_cast<const byte *>(data.data()), data.size());
     }
 
 private:

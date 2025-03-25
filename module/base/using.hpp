@@ -10,7 +10,7 @@
 #define __MATH_E__	2.7182818284590452353602874713527
 
 // 字节类型
-using byte						= uint8_t;	
+using byte						= unsigned char;	
 
 // 有符号整型
 using i8						= int8_t;
