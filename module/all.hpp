@@ -11,7 +11,10 @@
 
 #include "big_int/big_int.hpp"
 
-#include "base_code/base64.hpp"
-#include "base_code/base16.hpp"
+#include "encoding/base16.hpp"
+#include "encoding/base64.hpp"
+#include "encoding/xor_encryption.hpp"
 
 #include "random/random.hpp"
+
+#include "allocator/allocator.hpp"

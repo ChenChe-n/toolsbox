@@ -265,7 +265,7 @@ namespace __NAMESPACE_NAME__::thread
         mutex_type *mutex_;
     };
 
-    template <typename mutex, typename T>
+    template <typename Mutex, typename T>
     class box_lock
     {
     public:
@@ -275,7 +275,7 @@ namespace __NAMESPACE_NAME__::thread
         box_lock(box_lock &&) = delete;
         box_lock &operator=(box_lock &&) = delete;
 
-        inline box_lock(mutex &mutex__, T &data) noexcept
+        inline box_lock(Mutex &mutex__, T &data) noexcept
             : mutex_(mutex__), data_(data)
         {
             mutex_.lock();
@@ -285,18 +285,25 @@ namespace __NAMESPACE_NAME__::thread
             mutex_.unlock();
         }
 
-        inline box_lock& operator=(const T &data){
+        inline box_lock &operator=(const T &data)
+        {
             data_ = data;
             return *this;
         }
-        inline box_lock& operator=(const T &&data){
+        inline box_lock &operator=(const T &&data)
+        {
             data_ = std::move(data);
             return *this;
         }
+        inline operator T &()
+        {
+            return data_;
+        }
 
         T &data_;
+
     private:
-        mutex &mutex_;
+        Mutex &mutex_;
     };
 
 }

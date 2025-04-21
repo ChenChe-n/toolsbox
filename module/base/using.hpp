@@ -4,6 +4,8 @@
 #include <bit>
 #include <type_traits>
 
+#include <iostream>
+
 #define __NAMESPACE_NAME__ ts
 
 #define __MATH_PI__	3.1415926535897932384626433832795
@@ -76,6 +78,7 @@ inline constexpr  Unsigned signed_to_unsigned(Signed num) noexcept
 	}
 	return static_cast<Unsigned>(-num);
 }
+
 
 // 特化版本
 inline constexpr  u8  i8_to_u8(i8 num)  noexcept { return signed_to_unsigned<i8, u8>(num); }

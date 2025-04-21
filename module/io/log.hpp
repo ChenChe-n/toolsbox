@@ -22,7 +22,8 @@ namespace __NAMESPACE_NAME__::io
         };
         inline std::string format(log_type logging_type, const std::string_view str)
         {
-            auto date = __NAMESPACE_NAME__::time::now().to_date().get_date().to_string("%Y-%m-%d %H:%M:%S");
+            auto date = __NAMESPACE_NAME__::time::now().date("{:%Y:%m:%d %H.%M.%S}");
+
             auto time = __NAMESPACE_NAME__::time::elapsed_time().fseconds();
             switch (logging_type)
             {

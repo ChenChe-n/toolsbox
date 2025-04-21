@@ -361,7 +361,6 @@ namespace __NAMESPACE_NAME__
 			{
 				return this->time_point_ <= other.time_point_;
 			}
-
 			// 减运算符
 			constexpr inline time_point operator-(const duration &rhs) const noexcept
 			{
@@ -389,175 +388,19 @@ namespace __NAMESPACE_NAME__
 			{
 				return duration(this->time_point_ - rhs.time_point_);
 			}
+
 			// 获取日期
-			inline date to_date() const noexcept
+			inline std::string date(const std::string_view fmt = "{:%Y-%m-%d %H:%M:%S}")
 			{
-				return date(this->time_point_);
+				auto d1 = time_point(this->time_point_) - time::program_start_time_;
+				auto d2 = (time::program_start_sys_time_ + d1.to_nanoseconds());
+				auto d3 = std::chrono::floor<std::chrono::seconds>(d2);
+
+				return std::vformat(fmt, std::make_format_args(d3));
 			}
 
 		private:
 			clock::time_point time_point_;
-		};
-
-		class date
-		{
-		public:
-			// using date_info = tm;
-			class date_info
-			{
-			public:
-				// 默认构造函数
-				constexpr inline date_info() noexcept
-				{
-					this->tm_ = {0};
-				}
-				// 构造函数 tm
-				constexpr inline date_info(const tm &tm) noexcept
-				{
-					this->tm_ = tm;
-				}
-				// 构造函数 date_info
-				constexpr inline date_info(const date_info &date_info) noexcept
-				{
-					this->tm_ = date_info.tm_;
-				}
-				// 赋值运算符
-				constexpr inline date_info &operator=(const date_info &date_info) noexcept
-				{
-					this->tm_ = date_info.tm_;
-					return *this;
-				}
-				// 赋值运算符
-				constexpr inline date_info &operator=(const tm &tm) noexcept
-				{
-					this->tm_ = tm;
-					return *this;
-				}
-
-				// 获取字符串
-				// format如下：它们是区分大小写的。
-				// %a	星期几的简写
-				// %A	星期几的全称
-				// %b	月分的简写
-				// %B	月份的全称
-				// %c	标准的日期的时间串
-				// %C	年份的后两位数字
-				// %d	十进制表示的每月的第几天
-				// %D 	月/天/年
-				// %e 	在两字符域中，十进制表示的每月的第几天
-				// %F 	年-月-日
-				// %g 	年份的后两位数字，使用基于周的年
-				// %G 	年分，使用基于周的年
-				// %h 	简写的月份名
-				// %H 	24小时制的小时
-				// %I 	12小时制的小时
-				// %j 	十进制表示的每年的第几天
-				// %m 	十进制表示的月份
-				// %M 	十时制表示的分钟数
-				// %n 	新行符
-				// %p 	本地的AM或PM的等价显示
-				// %r 	12小时的时间
-				// %R 	显示小时和分钟：hh:mm
-				// %S 	十进制的秒数
-				// %t 	水平制表符
-				// %T 	显示时分秒：hh:mm:ss
-				// %u 	每周的第几天，星期一为第一天 （值从0到6，星期一为0）
-				// %U 	第年的第几周，把星期日做为第一天（值从0到53）
-				// %V 	每年的第几周，使用基于周的年
-				// %w 	十进制表示的星期几（值从0到6，星期天为0）
-				// %W 	每年的第几周，把星期一做为第一天（值从0到53）
-				// %x 	标准的日期串
-				// %X 	标准的时间串
-				// %y 	不带世纪的十进制年份（值从0到99）
-				// %Y 	带世纪部分的十进制年份
-				// %z，%Z 时区名称，如果不能得到时区名称则返回空字符。
-				// %% 	百分号
-				inline std::string to_string(const std::string &str) const noexcept
-				{
-					char buffer[256] = { 0 };
-					strftime(buffer, sizeof(buffer), str.c_str(), &this->tm_);
-					std::string out(buffer);
-					return out;
-				}
-
-			private:
-				friend class date;
-				tm tm_;
-			};
-			// 默认构造函数
-			date() = delete;
-			// 构造函数 time_point
-			constexpr inline date(const time_point &time_point) noexcept
-				: time_point_(time_point), is_update_(true)
-			{
-			}
-
-			// 构造函数 date
-			constexpr inline date(const date &date) noexcept
-				: time_point_(date.time_point_), is_update_(date.is_update_), date_info_(date.date_info_)
-			{
-			}
-
-			// 赋值运算符
-			constexpr inline date &operator=(const time_point &time_point) noexcept
-			{
-				this->time_point_ = time_point;
-				this->is_update_ = true;
-				return *this;
-			}
-			// 赋值运算符
-			constexpr inline date &operator=(const date &date) noexcept
-			{
-				this->time_point_ = date.time_point_;
-				this->is_update_ = date.is_update_;
-				return *this;
-			}
-			// 算术运算符
-			constexpr inline date &operator+=(const duration &duration) noexcept
-			{
-				this->time_point_ += duration;
-				this->is_update_ = true;
-				return *this;
-			}
-			// 算术运算符
-			constexpr inline date operator+(const duration &duration) noexcept
-			{
-				date temp = *this;
-				temp.time_point_ += duration;
-				temp.is_update_ = true;
-				return temp;
-			}
-			// 获取日期
-			inline date_info &get_date() noexcept
-			{
-				if (is_update_)
-				{
-					convert_time_point();
-					is_update_ = false;
-				}
-				return date_info_;
-			}
-
-		private:
-			// 时间点转日期
-			inline void convert_time_point() noexcept
-			{
-				auto d1 = this->time_point_ - time::program_start_time_;
-				auto d2 = time::program_start_sys_time_ + d1.to_seconds();
-				time_t t = std::chrono::system_clock::to_time_t(d2);
-#ifdef _WIN32
-				// Windows 使用 localtime_s
-				localtime_s(&(date_info_.tm_), &t);
-#else
-				// Linux/macOS 使用 tm_gmtoff
-				localtime_r(&t, &(date_info_.tm_));
-#endif
-				return;
-			}
-
-			time_point time_point_;
-			date_info date_info_;
-			bool is_update_;
 		};
 
 		// 获取当前时间点

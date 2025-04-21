@@ -1,50 +1,56 @@
 #include "module/all.hpp"
-
 #include <array>
+#include <map>
 #include <cassert>
 #include <cstdint>
 #include <climits>
+#include <cstdlib>
+#include <vector>
+#include <fstream>
+#include <sstream>
 
+// #include "module/containers/vm.hpp"
+#include "module/containers/int128.hpp"
 int main()
 {
-    ts::thread::mutex_v1 m1;
     auto out = ts::io::logging();
-    ts::thread::box<u64> box{0};
-    out.info("initOk");
-    std::thread t1([&](){
-        for (u64 i = 0; i < 100'000'000; ++i) {
-            auto b = box.get();
-            auto temp = b.data_;
-            temp += 1;
-            temp *= 3;
-            temp /= 2;
-            b = temp;
-        } });
-    std::thread t2([&](){
-        for (u64 i = 0; i < 100'000'000; ++i) {
-            auto b = box.get();
-            auto temp = b.data_;
-            temp += 1;
-            temp *= 3;
-            temp /= 2;
-            b = temp;
-        } });
-    // for (u64 i = 0; i < 100'000; ++i)
-    // {
-    //     auto b = box.get();
-    //     out.info("box.data_ = " + std::to_string(b.data_));
-    // }
-    t1.join();
-    t2.join();
-    out.info("box.data_ = " + std::to_string(box.get().data_));
-    u64 o = 0;
-    for (size_t i = 0; i < 200'000'000; i++)
+    u64 i1 = 1;
+    u64 q1 = 1024 * 1024 * 1024;
+    std::cin >> q1;
+
+    auto t1 = ts::time::now();
     {
-        o += 1;
-        o *= 3;
-        o /= 2;
+        __int128_t a = i1;
+        for (size_t i = 0; i < q1; i++)
+        {
+            a += i;
+            a -= 13;
+            a *= 72;
+            a /= 17;
+            a ^= a % 14816;
+            a ^= a << 9;
+            a ^= a >> 5;
+        }
+        out.info(std::format("{}", a));
     }
-    out.info("o = " + std::to_string(o));
-    
+    auto t2 = ts::time::now();
+    {
+        int128 a = i1;
+        for (size_t i = 0; i < q1; i++)
+        {
+            a += i;
+            a -= 13;
+            a *= 72;
+            a /= 17;
+            a ^= a % 14816;
+            a ^= a << 9;
+            a ^= a >> 5;
+        }
+        out.info(std::format("{}", a.to_string()));
+    }
+    auto t3 = ts::time::now();
+    out.info(std::format("__int128_t : {}", (t2 - t1).fseconds()));
+    out.info(std::format("int128 : {}", (t3 - t2).fseconds()));
+
     return 0;
 }
