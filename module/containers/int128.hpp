@@ -551,6 +551,28 @@ public:
         result.data_.data_[3] = ~data_.data_[3];
         return result;
     }
+    inline constexpr uint128 &operator++() noexcept
+    {
+        *this += 1;
+        return *this;
+    }
+    inline constexpr uint128 operator++(int) noexcept
+    {
+        auto temp = *this;
+        ++*this;
+        return temp;
+    }
+    inline constexpr uint128 &operator--() noexcept
+    {
+        *this -= 1;
+        return *this;
+    }
+    inline constexpr uint128 operator--(int) noexcept
+    {
+        auto temp = *this;
+        --*this;
+        return temp;
+    }
 
     // 算术运算符
     inline constexpr uint128 &operator+=(const uint128 &data) noexcept
@@ -779,6 +801,10 @@ public:
     {
         return data_.empty();
     }
+    inline constexpr bool is_one() const noexcept
+    {
+        return data_.data_[0] == 1 && data_.data_[1] == 0 && data_.data_[2] == 0 && data_.data_[3] == 0;
+    }
 
     friend class int128;
     inline friend std::ostream &operator<<(std::ostream &, const uint128 &);
@@ -866,6 +892,28 @@ public:
     inline constexpr int128 operator~() const noexcept
     {
         return int128{~data_};
+    }
+    inline constexpr int128 operator++() noexcept
+    {
+        ++data_;
+        return *this;
+    }
+    inline constexpr int128 operator++(int) noexcept
+    {
+        auto temp = *this;
+        ++data_;
+        return temp;
+    }
+    inline constexpr int128 operator--() noexcept
+    {
+        --data_;
+        return *this;
+    }
+    inline constexpr int128 operator--(int) noexcept
+    {
+        auto temp = *this;
+        --data_;
+        return temp;
     }
 
     // 算术运算符
@@ -1079,6 +1127,10 @@ public:
     {
         return data_.data_.empty();
     }
+    inline constexpr bool is_one() const noexcept
+    {
+        return data_.data_.data_[0] == 1 && data_.data_.data_[1] == 0 && data_.data_.data_[2] == 0 && data_.data_.data_[3] == 0;
+    }
     inline friend std::ostream &operator<<(std::ostream &, const int128 &);
     inline friend std::istream &operator>>(std::istream &, int128 &);
 
@@ -1097,5 +1149,5 @@ inline std::istream &operator>>(std::istream &is, int128 &value)
     return is;
 }
 using i128 = int128;
-inline constexpr i128 i128_max{"340282366920938463463374607431768211455"};
-inline constexpr i128 i128_min{"0"};
+inline constexpr i128 i128_max{"170141183460469231731687303715884105727"};
+inline constexpr i128 i128_min{"-170141183460469231731687303715884105728"};
